@@ -4,7 +4,12 @@ opendex-launcher
 [![Discord](https://img.shields.io/discord/628640072748761118.svg)](https://discord.gg/RnXFHpn)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
-The opendex-launcher is a thin wrapper of opendex-docker launcher which enables running any branch of opendex-docker since version 2. It will keep a low update frequency, and it will be embedded in our GUI and CLI applications. 
+`opendex-launcher` is a lightweight binary launcher for [opendex-docker](https://github.com/opendexnetwork/opendex-docker), responsible for starting, stopping & updating containers, as well as orchestrating various flows, like creating an opendex environment. It is designed with stability in mind, not requiring frequent updates. It is embedded in [opendex-desktop](https://github.com/opendexnetwork/opendex-desktop) as well as [opendex-docker](https://github.com/opendexnetwork/opendex-docker). 
+`opendex-launcher` also allows developers to run any branch of [opendex-docker](https://github.com/opendexnetwork/opendex-docker).
+
+### Requirements
+
+docker & docker-compose >= 18.09 (we recommend following the [official install instructions](https://docs.docker.com/get-docker/) to ensure compatibility)
 
 ### Build
 
