@@ -1,4 +1,4 @@
-package config
+package core
 
 import (
 	"fmt"
@@ -18,7 +18,7 @@ type Config struct {
 	MainnetDir string `toml:"mainnet-dir"`
 }
 
-func ParseConfig(reader io.Reader) (*Config, error) {
+func parseConfig(reader io.Reader) (*Config, error) {
 	config := Config{}
 	data, err := ioutil.ReadAll(reader)
 	if err != nil {
