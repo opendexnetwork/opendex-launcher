@@ -1,4 +1,4 @@
-package config
+package core
 
 import (
 	"github.com/magiconair/properties/assert"
@@ -7,7 +7,7 @@ import (
 )
 
 func Test1(t *testing.T) {
-	config, err := ParseConfig(strings.NewReader(`
+	config, err := parseConfig(strings.NewReader(`
 [GitHub]
 access-token = "abc123"
 `))

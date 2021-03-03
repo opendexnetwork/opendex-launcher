@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/opendexnetwork/opendex-launcher/utils"
 	"github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
@@ -21,21 +22,21 @@ var (
 	ReleaseRef = regexp.MustCompile(`^\d{2}\.\d{2}\.\d{2}.*$`)
 )
 
-type GitHub struct {
+type GithubClient struct {
 	Client      *http.Client
 	Logger      *logrus.Entry
 	AccessToken string
 }
 
-func NewGitHub(accessToken string) *GitHub {
-	return &GitHub{
+func NewGithubClient(accessToken string) *GithubClient {
+	return &GithubClient{
 		Client:      http.DefaultClient,
 		Logger:      logrus.NewEntry(logrus.StandardLogger()).WithField("name", "github"),
 		AccessToken: accessToken,
 	}
 }
 
-func (t *GitHub) getResponseError(resp *http.Response) error {
+func (t *GithubClient) getResponseError(resp *http.Response) error {
 	var err error
 	if resp.StatusCode != http.StatusOK {
 		var result map[string]interface{}
@@ -48,7 +49,7 @@ func (t *GitHub) getResponseError(resp *http.Response) error {
 	return nil
 }
 
-func (t *GitHub) doGet(url string) ([]byte, error) {
+func (t *GithubClient) doGet(url string) ([]byte, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -69,7 +70,7 @@ func (t *GitHub) doGet(url string) ([]byte, error) {
 	return body, nil
 }
 
-func (t *GitHub) GetHeadCommit(branch string) (string, error) {
+func (t *GithubClient) GetHeadCommit(branch string) (string, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/opendexnetwork/opendex-docker/commits/%s", branch)
 	body, err := t.doGet(url)
 	if err != nil {
@@ -106,7 +107,7 @@ type WorkflowRunList struct {
 	WorkflowRuns []WorkflowRun `json:"workflow_runs"`
 }
 
-func (t *GitHub) getDownloadUrl(runId uint) (string, error) {
+func (t *GithubClient) getWorkflowDownloadUrl(runId uint) (string, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/opendexnetwork/opendex-docker/actions/runs/%d/artifacts", runId)
 	body, err := t.doGet(url)
 	if err != nil {
@@ -123,7 +124,7 @@ func (t *GitHub) getDownloadUrl(runId uint) (string, error) {
 	return "", ErrNotFound
 }
 
-func (t *GitHub) getLastRunOfBranch(branch string, commit string) (*WorkflowRun, error) {
+func (t *GithubClient) getLastRunOfBranch(branch string, commit string) (*WorkflowRun, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/opendexnetwork/opendex-docker/actions/workflows/build.yml/runs?branch=%s", branch)
 	body, err := t.doGet(url)
 	if err != nil {
@@ -141,8 +142,7 @@ func (t *GitHub) getLastRunOfBranch(branch string, commit string) (*WorkflowRun,
 	return run, nil
 }
 
-func (t *GitHub) DownloadLatestBinary(branch string, commit string) error {
-	var err error
+func (t *GithubClient) getDownloadUrl(branch string, commit string) (string, error) {
 	var url string
 
 	if ReleaseRef.Match([]byte(branch)) {
@@ -151,44 +151,86 @@ func (t *GitHub) DownloadLatestBinary(branch string, commit string) error {
 		run, err := t.getLastRunOfBranch(branch, commit)
 		if err != nil {
 			if errors.Is(err, ErrNotFound) {
-				return fmt.Errorf("no launcher build for commit %s (The branch \"%s\" does not have a binary launcher)", commit, branch)
+				return "", fmt.Errorf("no launcher build for commit %s (The branch \"%s\" does not have a binary launcher)", commit, branch)
 			}
-			return fmt.Errorf("get last run of branch: %w", err)
+			return "", err
 		}
 
-		url, err = t.getDownloadUrl(run.Id)
+		url, err = t.getWorkflowDownloadUrl(run.Id)
 		if err != nil {
-			return fmt.Errorf("get download url: %w", err)
+			return "", nil
 		}
 		t.Logger.Debugf("Download launcher.zip from %s", url)
 	}
 
-	if _, err := os.Stat(commit); os.IsNotExist(err) {
-		err = os.Mkdir(commit, 0755)
-		if err != nil {
-			return fmt.Errorf("create commit (%s) folder: %w", commit, err)
+	return url, nil
+}
+
+func (t *GithubClient) ensureCommitDir(commit string, launcherVersionsDir string) (string, error) {
+	commitDir := filepath.Join(launcherVersionsDir, commit)
+
+	exists, err := utils.FileExists(commitDir)
+	if err != nil {
+		return "", err
+	}
+
+	if ! exists {
+		if err := os.Mkdir(commitDir, 0755); err != nil {
+			return "", err
 		}
 	}
 
-	err = os.Chdir(commit)
+	return commitDir, nil
+}
+
+func (t *GithubClient) downloadLauncher(url string, commit string, commitDir string) error {
+	var err error
+
+	wd, err := os.Getwd()
 	if err != nil {
-		return fmt.Errorf("change directory: %w", err)
+		return err
 	}
 
-	err = t.downloadFile(url, "launcher.zip")
-	if err != nil {
-		return fmt.Errorf("download: %w", err)
+	if err := os.Chdir(commitDir); err != nil {
+		return err
+	}
+	defer os.Chdir(wd)
+
+	if err = t.downloadFile(url, "launcher.zip"); err != nil {
+		return err
 	}
 
-	err = t.unzip("launcher.zip")
-	if err != nil {
-		return fmt.Errorf("unzip: %w", err)
+	if err = t.unzip("launcher.zip"); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func (t *GitHub) unzip(file string) error {
+func (t *GithubClient) DownloadLatestBinary(branch string, commit string, launcherVersionsDir string) error {
+	var err error
+	var url string
+
+	if url, err = t.getDownloadUrl(branch, commit); err != nil {
+		return err
+	}
+	if Debug {
+		fmt.Printf("Download: %s\n", url)
+	}
+
+	commitDir, err := t.ensureCommitDir(commit, launcherVersionsDir)
+	if err != nil {
+		return err
+	}
+
+	if err = t.downloadLauncher(url, commit, commitDir); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (t *GithubClient) unzip(file string) error {
 	var filenames []string
 
 	r, err := zip.OpenReader(file)
@@ -238,12 +280,11 @@ func (t *GitHub) unzip(file string) error {
 	return nil
 }
 
-func (t *GitHub) downloadFile(url string, file string) error {
+func (t *GithubClient) downloadFile(url string, file string) error {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("new request: %w", err)
 	}
-	fmt.Println(t.AccessToken)
 	req.Header.Add("Authorization", "token "+t.AccessToken)
 	resp, err := t.Client.Do(req)
 	if err != nil {
