@@ -4,7 +4,7 @@ GO_BIN := ${GOPATH}/bin
 
 GOBUILD := go build -v
 
-VERSION := local
+VERSION := latest
 COMMIT := $(shell git rev-parse HEAD)
 ifeq ($(OS),Windows_NT)
 	TIMESTAMP := $(shell powershell.exe scripts\get_timestamp.ps1)

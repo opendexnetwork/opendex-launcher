@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/mitchellh/go-homedir"
+	"github.com/opendexnetwork/opendex-launcher/build"
 	"github.com/opendexnetwork/opendex-launcher/utils"
 	"os"
 	"os/exec"
@@ -287,6 +288,10 @@ func (t *Launcher) Start() error {
 
 	if Debug {
 		fmt.Printf("Launcher: %s\n", launcher)
+	}
+
+	if len(args) == 2 && args[1] == "version" {
+		fmt.Printf("opendex-launcher %s-%s\n", build.Version, build.GitCommit[:7])
 	}
 
 	if err := t.Run(launcher, args[1:]...); err != nil {
