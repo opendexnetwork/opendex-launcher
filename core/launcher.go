@@ -123,7 +123,7 @@ func (t *Launcher) parseConfig() error {
 		return err
 	}
 	if !exists {
-		// no config file presented
+		t.config = &Config{}
 		return nil
 	}
 
